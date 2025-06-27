@@ -29,8 +29,8 @@ function App() {
       // filepath: c:\Temp\historico_usura_react\src\App.tsx
       // const idSheets = import.meta.env.APP_SHEETS_ID || "";
       // const apiKey = import.meta.env.APP_GOOGLE_API_KEY || "";
-      const idSheets = "1Bd6qpAW36V8sVbcpjFkfD17t4IPPYiVkPFpXHNCGFLQ"; // Reemplaza con tu ID de Google Sheets
-      const apiKey = "AIzaSyAYGHByZLx72_QpK8jSCkz-v54vnkjhdfU"; // Reemplaza con tu API Key de Google
+      const idSheets = "1Yn4cslq3YvOTV_GjJfDVTA5u0OO-7lJYLM2bGacrucM"; // Reemplaza con tu ID de Google Sheets
+      const apiKey = "AIzaSyC3WUX9yr1ym-VsGH1c7Clx1LrNRC2vSm4"; // Reemplaza con tu API Key de Google
 
       // URL corregida para la API de Google Sheets
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${idSheets}/values/A2:E1000?key=${apiKey}`;

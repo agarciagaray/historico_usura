@@ -90,6 +90,7 @@ async function loadData() {
       const db = new Date(b.inicio.split("/").reverse().join("-"));
       return db - da;
     });
+    updateDashboard(rawData);
     renderTable(rawData);
     initChart();
   } catch (err) {
@@ -97,6 +98,54 @@ async function loadData() {
     const tableBody = document.getElementById('tableBody');
     if (tableBody) tableBody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-white/60">No se pudieron cargar los datos.</td></tr>`;
   }
+}
+
+// ==== UPDATE DASHBOARD ==== //
+function updateDashboard(data) {
+  if (!data || data.length === 0) return;
+  const current = data[0];
+  const previous = data.length > 1 ? data[1] : null;
+
+  // Update Badge
+  const [day, month, year] = current.inicio.split('/');
+  const dateObj = new Date(`${year}-${month}-${day}T00:00:00`);
+  const monthName = dateObj.toLocaleString('es-ES', { month: 'long' });
+  const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  const badgeEl = document.querySelector('.hero-badge');
+  if (badgeEl) badgeEl.textContent = `📅 ${capitalizedMonth} ${year}`;
+
+  // Update main rate for animation
+  targetRate = current.tea;
+  
+  // Re-run animation if it's already initialized, or it will be picked up by ScrollTrigger
+  if (currentRate > 0) animateCounter(); 
+
+  // Update daily rate
+  const dailyRateEl = document.getElementById('dailyRate');
+  if (dailyRateEl) dailyRateEl.textContent = current.diaria.toFixed(5) + '%';
+
+  // Update TNM
+  const tnmValueEl = document.getElementById('tnmValue');
+  if (tnmValueEl) tnmValueEl.textContent = current.tnm.toFixed(5) + '%';
+
+  // Update Variation
+  const variationValueEl = document.getElementById('variationValue');
+  if (variationValueEl && previous) {
+    const diff = current.tea - previous.tea;
+    const sign = diff > 0 ? '+' : '';
+    variationValueEl.textContent = sign + diff.toFixed(2) + '%';
+    if (diff < 0) {
+      variationValueEl.style.color = '#34d399'; // green (rate dropped)
+    } else if (diff > 0) {
+      variationValueEl.style.color = '#f87171'; // red (rate increased)
+    } else {
+      variationValueEl.style.color = '#94a3b8'; // gray
+    }
+  }
+
+  // Update Last Update
+  const lastUpdateEl = document.getElementById('lastUpdate');
+  if (lastUpdateEl) lastUpdateEl.textContent = current.inicio;
 }
 
 // ==== RENDER TABLE ==== //
@@ -233,7 +282,7 @@ document.querySelectorAll('.fade-in').forEach(el => {
 });
 // Counter animation for main rate
 const currentRateEl = document.getElementById('currentRate');
-const targetRate = 27.66; // you may compute this dynamically later
+let targetRate = 0;
 let currentRate = 0;
 function animateCounter() {
   const duration = 1500;

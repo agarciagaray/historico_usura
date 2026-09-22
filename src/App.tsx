@@ -1,5 +1,6 @@
-import { Building2, Calendar, Filter, TrendingUp } from "lucide-react";
+import { BarChart3, Building2, Calendar, Moon, RotateCcw, Search, Sun, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
+import { getThemeFromStorage, setThemeToStorage, storageAvailable } from "./utils/storage";
 
 interface TasaData {
   fechaInicial: string;
@@ -9,52 +10,149 @@ interface TasaData {
   tasaDiaria: string;
 }
 
+interface StatsActual {
+  tasaAjustada: string;
+  tasaDiaria: string;
+  tasaAnual: string;
+  mes: string;
+  año: number;
+  tnm: string;
+}
+
+const BG_ORBS = [
+  { left: "8%",  top: "12%", size: 320, delay: "0s",   dur: "7s"  },
+  { left: "72%", top: "5%",  size: 220, delay: "1.2s", dur: "9s"  },
+  { left: "55%", top: "60%", size: 280, delay: "0.6s", dur: "8s"  },
+  { left: "88%", top: "75%", size: 180, delay: "2s",   dur: "10s" },
+  { left: "20%", top: "78%", size: 200, delay: "1.8s", dur: "6s"  },
+];
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  accent = false,
+  delay = "0s",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: React.ElementType;
+  accent?: boolean;
+  delay?: string;
+}) {
+  return (
+    <div
+      className="animate-fade-in-up flex-1 min-w-[180px] rounded-2xl border border-white/15 bg-white/8 backdrop-blur-md p-5 flex flex-col gap-3 shadow-lg hover:bg-white/12 transition-all duration-300"
+      style={{ animationDelay: delay }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-widest text-white/50">
+          {label}
+        </span>
+        <span className={`p-2 rounded-xl ${accent ? "bg-primary-500/25 text-primary-300" : "bg-white/10 text-white/60"}`}>
+          <Icon className="w-4 h-4" />
+        </span>
+      </div>
+      <div>
+        <p className={`text-3xl font-bold tracking-tight ${accent ? "text-primary-300" : "text-white"}`}>
+          {value}
+        </p>
+        {sub && <p className="text-xs text-white/45 mt-1 leading-snug">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr>
+      {[...Array(6)].map((_, i) => (
+        <td key={i} className="px-4 py-3">
+          <div className="h-4 rounded-lg shimmer" style={{ width: `${55 + i * 7}%` }} />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function calcularStats(lista: TasaData[]): StatsActual | null {
+  if (lista.length === 0) return null;
+  const ultima = lista[0];
+  const tea = parseFloat(ultima.tasaAnual.replace(",", "."));
+  const tasaAjustada = ultima.tasaAnualAjustada.replace(",", ".");
+  const tnm = ((Math.pow(1 + tea / 100, 1 / 12) - 1) * 100).toFixed(4);
+  const now = new Date();
+  return {
+    tasaAjustada,
+    tasaDiaria: ultima.tasaDiaria,
+    tasaAnual: ultima.tasaAnual,
+    tnm,
+    mes: MESES[now.getMonth()],
+    año: now.getFullYear(),
+  };
+}
+
 function App() {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      const stored = getThemeFromStorage();
+      if (stored) return stored;
+      return "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    try {
+      if (next === "dark") document.documentElement.classList.add("dark");
+      else document.documentElement.classList.remove("dark");
+      if (storageAvailable()) setThemeToStorage(next);
+    } catch {
+      // noop
+    }
+  };
+
   const [datos, setDatos] = useState<TasaData[]>([]);
   const [datosFiltrados, setDatosFiltrados] = useState<TasaData[]>([]);
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
-  const [textoActual, setTextoActual] = useState("");
+  const [statsActual, setStatsActual] = useState<StatsActual | null>(null);
 
   useEffect(() => {
     cargarDatos();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cargarDatos = async () => {
     setCargando(true);
     setError("");
     try {
-      // filepath: c:\Temp\historico_usura_react\src\App.tsx
-      // const idSheets = import.meta.env.APP_SHEETS_ID || "";
-      // const apiKey = import.meta.env.APP_GOOGLE_API_KEY || "";
-      const idSheets = "1Yn4cslq3YvOTV_GjJfDVTA5u0OO-7lJYLM2bGacrucM"; // Reemplaza con tu ID de Google Sheets
-      const apiKey = "AIzaSyC3WUX9yr1ym-VsGH1c7Clx1LrNRC2vSm4"; // Reemplaza con tu API Key de Google
-
-      // URL corregida para la API de Google Sheets
+      const idSheets = "1Yn4cslq3YvOTV_GjJfDVTA5u0OO-7lJYLM2bGacrucM";
+      const apiKey = "AIzaSyC3WUX9yr1ym-VsGH1c7Clx1LrNRC2vSm4";
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${idSheets}/values/A2:E1000?key=${apiKey}`;
-
-      console.log("Cargando datos desde:", url);
-
       const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(
-          `Error HTTP: ${response.status} - ${response.statusText}`
-        );
+        throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log("Datos recibidos:", data);
-
-      const valores = data.values || [];
+      const valores: string[][] = data.values || [];
 
       if (valores.length === 0) {
         throw new Error("No se encontraron datos en la hoja de cálculo");
       }
 
-      const datosFormateados: TasaData[] = valores.map((fila: string[]) => ({
+      const datosFormateados: TasaData[] = valores.map((fila) => ({
         fechaInicial: fila[0] || "",
         fechaFinal: fila[1] || "",
         tasaAnual: fila[2] || "",
@@ -62,90 +160,30 @@ function App() {
         tasaDiaria: fila[4] || "",
       }));
 
-      // Ordenar por fecha descendente
       datosFormateados.sort((a, b) => {
-        const fechaA = new Date(a.fechaInicial.split("/").reverse().join("-"));
-        const fechaB = new Date(b.fechaInicial.split("/").reverse().join("-"));
-        return fechaB.getTime() - fechaA.getTime();
+        const fa = new Date(a.fechaInicial.split("/").reverse().join("-"));
+        const fb = new Date(b.fechaInicial.split("/").reverse().join("-"));
+        return fb.getTime() - fa.getTime();
       });
 
       setDatos(datosFormateados);
       setDatosFiltrados(datosFormateados);
-      generarTextoActual(datosFormateados);
+      setStatsActual(calcularStats(datosFormateados));
+    } catch (err) {
+      console.error("Error cargando datos:", err);
+      setError(err instanceof Error ? err.message : "Error desconocido al cargar los datos");
 
-      console.log(
-        "Datos procesados correctamente:",
-        datosFormateados.length,
-        "registros"
-      );
-    } catch (error) {
-      console.error("Error cargando datos:", error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Error desconocido al cargar los datos"
-      );
-
-      // Datos de ejemplo para mostrar la interfaz
       const datosEjemplo: TasaData[] = [
-        {
-          fechaInicial: "01/06/2025",
-          fechaFinal: "30/06/2025",
-          tasaAnual: "25.9700",
-          tasaAnualAjustada: "23.9700",
-          tasaDiaria: "0.0657",
-        },
-        {
-          fechaInicial: "01/05/2025",
-          fechaFinal: "31/05/2025",
-          tasaAnual: "25.6200",
-          tasaAnualAjustada: "23.6200",
-          tasaDiaria: "0.0647",
-        },
-        {
-          fechaInicial: "01/04/2025",
-          fechaFinal: "30/04/2025",
-          tasaAnual: "24.9200",
-          tasaAnualAjustada: "22.9200",
-          tasaDiaria: "0.0628",
-        },
+        { fechaInicial: "01/06/2025", fechaFinal: "30/06/2025", tasaAnual: "25.9700", tasaAnualAjustada: "23.9700", tasaDiaria: "0.0657" },
+        { fechaInicial: "01/05/2025", fechaFinal: "31/05/2025", tasaAnual: "25.6200", tasaAnualAjustada: "23.6200", tasaDiaria: "0.0647" },
+        { fechaInicial: "01/04/2025", fechaFinal: "30/04/2025", tasaAnual: "24.9200", tasaAnualAjustada: "22.9200", tasaDiaria: "0.0628" },
       ];
 
       setDatos(datosEjemplo);
       setDatosFiltrados(datosEjemplo);
-      generarTextoActual(datosEjemplo);
+      setStatsActual(calcularStats(datosEjemplo));
     } finally {
       setCargando(false);
-    }
-  };
-
-  const generarTextoActual = (datos: TasaData[]) => {
-    if (datos.length > 0) {
-      const ultimaFila = datos[0];
-      const valorTasaAjustada = ultimaFila.tasaAnualAjustada.replace(",", ".");
-      const valorTasaDiaria = (parseFloat(valorTasaAjustada) / 365).toFixed(14);
-
-      const fechaActual = new Date();
-      const meses = [
-        "Enero",
-        "Febrero",
-        "Marzo",
-        "Abril",
-        "Mayo",
-        "Junio",
-        "Julio",
-        "Agosto",
-        "Septiembre",
-        "Octubre",
-        "Noviembre",
-        "Diciembre",
-      ];
-      const mes = meses[fechaActual.getMonth()];
-      const año = fechaActual.getFullYear();
-
-      setTextoActual(
-        `En ${mes} ${año}, la tasa de Usura ajustada es ${valorTasaAjustada}% (diaria: ${valorTasaDiaria}%)`
-      );
     }
   };
 
@@ -154,254 +192,331 @@ function App() {
       setDatosFiltrados([...datos]);
       return;
     }
-
     const filtrados = datos.filter((item) => {
-      const fechaInicialItem = new Date(
-        item.fechaInicial.split("/").reverse().join("-")
-      );
-      const fechaFinalItem = new Date(
-        item.fechaFinal.split("/").reverse().join("-")
-      );
-
-      let cumpleFiltro = true;
-
-      if (fechaDesde) {
-        const fechaDesdeObj = new Date(fechaDesde);
-        cumpleFiltro =
-          cumpleFiltro &&
-          (fechaInicialItem >= fechaDesdeObj ||
-            fechaFinalItem >= fechaDesdeObj);
-      }
-
-      if (fechaHasta) {
-        const fechaHastaObj = new Date(fechaHasta);
-        cumpleFiltro = cumpleFiltro && fechaInicialItem <= fechaHastaObj;
-      }
-
-      return cumpleFiltro;
+      const fi = new Date(item.fechaInicial.split("/").reverse().join("-"));
+      const ff = new Date(item.fechaFinal.split("/").reverse().join("-"));
+      let ok = true;
+      if (fechaDesde) ok = ok && (fi >= new Date(fechaDesde) || ff >= new Date(fechaDesde));
+      if (fechaHasta) ok = ok && fi <= new Date(fechaHasta);
+      return ok;
     });
-
     setDatosFiltrados(filtrados);
   };
 
+  const limpiarFiltros = () => {
+    setFechaDesde("");
+    setFechaHasta("");
+    setDatosFiltrados([...datos]);
+  };
+
+  const hayFiltros = fechaDesde !== "" || fechaHasta !== "";
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-800 text-white relative overflow-hidden">
-      {/* Animated background particles */}
-      <div className="fixed inset-0 pointer-events-none">
-        {[...Array(8)].map((_, i) => (
+    <div className="min-h-screen text-white relative overflow-x-hidden">
+
+      {/* Decorative background orbs */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+        {BG_ORBS.map((orb, i) => (
           <div
             key={i}
-            className="absolute bg-white/10 rounded-full animate-pulse"
+            className="absolute rounded-full opacity-20 blur-3xl animate-pulse bg-primary-500"
             style={{
-              left: `${10 + i * 12}%`,
-              top: `${Math.random() * 100}%`,
-              width: `${12 + Math.random() * 16}px`,
-              height: `${12 + Math.random() * 16}px`,
-              animationDelay: `${i * 0.5}s`,
-              animationDuration: `${4 + Math.random() * 2}s`,
+              left: orb.left,
+              top: orb.top,
+              width: orb.size,
+              height: orb.size,
+              animationDelay: orb.delay,
+              animationDuration: orb.dur,
             }}
           />
         ))}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-900/60 via-transparent to-primary-800/40" />
       </div>
 
-      {/* Fixed Header - Más compacto */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-white/10 backdrop-blur-xl border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-4 py-2">
-          {/* Title Section - Más compacto */}
-          <div className="text-center mb-2">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <Building2 className="w-5 h-5 text-orange-400" />
-              <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">
+      {/* ── HEADER ── */}
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-primary-900/70 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-primary-500/20 border border-primary-400/30 flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-primary-300" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-bold text-white leading-tight truncate">
                 Tasa de Usura Colombia
               </h1>
-            </div>
-            <p className="text-xs text-orange-400 font-medium">
-              Desarrollado por Alejandro García Garay
-            </p>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-500/20 backdrop-blur-sm rounded-xl p-2 mb-2 border border-red-400/30">
-              <p className="text-xs text-red-200 text-center">⚠️ {error}</p>
-              <p className="text-xs text-red-300 text-center mt-1">
-                Mostrando datos de ejemplo
-              </p>
-            </div>
-          )}
-
-          {/* Current Rate Info - Más compacto */}
-          <div className="bg-white/15 backdrop-blur-sm rounded-xl p-2 mb-2 border border-white/20">
-            <div className="flex items-center justify-center gap-2 text-xs md:text-sm">
-              <TrendingUp className="w-3 h-3 text-orange-400 flex-shrink-0" />
-              <p className="text-center leading-tight">
-                {textoActual && (
-                  <span
-                    dangerouslySetInnerHTML={{
-                      __html: textoActual.replace(
-                        /(\d+\.?\d*%)/g,
-                        '<span class="text-orange-400 font-semibold">$1</span>'
-                      ),
-                    }}
-                  />
-                )}
+              <p className="text-[10px] text-primary-400 font-medium leading-tight hidden sm:block">
+                Histórico certificado por la Superfinanciera
               </p>
             </div>
           </div>
 
-          {/* Filters - Layout horizontal más compacto */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 border border-white/20">
-            <div className="flex flex-col md:flex-row gap-2 items-end">
-              <div className="flex-1 min-w-0">
-                <label className="block text-xs font-medium mb-1 text-white/90">
-                  Fecha Desde
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-white/60" />
-                  <input
-                    type="date"
-                    value={fechaDesde}
-                    onChange={(e) => setFechaDesde(e.target.value)}
-                    className="w-full pl-6 pr-2 py-1.5 text-xs bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <label className="block text-xs font-medium mb-1 text-white/90">
-                  Fecha Hasta
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-white/60" />
-                  <input
-                    type="date"
-                    value={fechaHasta}
-                    onChange={(e) => setFechaHasta(e.target.value)}
-                    className="w-full pl-6 pr-2 py-1.5 text-xs bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={aplicarFiltros}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white text-xs font-semibold rounded-lg transition-all transform hover:scale-105 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:ring-offset-transparent"
-              >
-                <Filter className="w-3 h-3" />
-                Filtrar
-              </button>
-              <button
-                onClick={() => {
-                  setFechaDesde("");
-                  setFechaHasta("");
-                  setDatosFiltrados([...datos]);
-                }}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-gray-400 to-gray-600 hover:from-gray-500 hover:to-gray-700 text-white text-xs font-semibold rounded-lg transition-all transform hover:scale-105 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 focus:ring-offset-transparent"
-                type="button"
-              >
-                Limpiar filtro
-              </button>
-            </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {error && (
+              <span className="hidden md:flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                Datos de ejemplo
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/8 hover:bg-white/14 border border-white/10 hover:border-white/20 text-white/80 hover:text-white transition-all duration-200 text-xs font-medium"
+            >
+              {theme === "dark"
+                ? <Sun className="w-4 h-4 text-amber-300" />
+                : <Moon className="w-4 h-4 text-indigo-300" />}
+              <span className="hidden sm:inline">
+                {theme === "dark" ? "Claro" : "Oscuro"}
+              </span>
+            </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Main Content - Margin top reducido significativamente */}
-      <div className="pt-60 pb-8 px-4">
-        <div className="max-w-7xl mx-auto">
-          {/* Table Container */}
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl overflow-hidden border border-white/20 shadow-2xl">
-            {cargando ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="w-12 h-12 border-3 border-white/30 border-t-orange-400 rounded-full animate-spin mb-4"></div>
-                <p className="text-lg font-medium">
-                  Cargando datos de tasa de usura...
-                </p>
+      {/* ── MAIN ── */}
+      <main className="pt-16 pb-16">
+
+        {/* Hero / Stats */}
+        <section className="border-b border-white/8 bg-white/3 backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+
+            {statsActual && !cargando && (
+              <div className="animate-slide-down inline-flex items-center gap-2 mb-5 px-3 py-1.5 rounded-full bg-primary-500/15 border border-primary-400/25 text-primary-300 text-xs font-semibold tracking-wide">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
+                {statsActual.mes} {statsActual.año} — Vigente
               </div>
-            ) : (
-              <div className="overflow-x-auto max-h-[calc(100vh-160px)]">
-                <table className="w-full">
-                  <thead className="bg-white/20 backdrop-blur-sm sticky top-0 z-10">
-                    <tr>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider border-b border-white/20">
-                        Fecha Inicial
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider border-b border-white/20">
-                        Fecha Final
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-white uppercase tracking-wider border-b border-white/20">
-                        Tasa Efectiva Anual (%)
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-blue-500 uppercase tracking-wider border-b border-white/20">
-                        Tasa Nominal Mensual (%)
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-orange-400 uppercase tracking-wider border-b border-white/20">
-                        Tasa Ajustada (%)
-                      </th>
-                      <th className="px-3 py-3 text-right text-xs font-semibold text-white uppercase tracking-wider border-b border-white/20">
-                        Tasa Diaria (%)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/10">
-                    {datosFiltrados.map((item, index) => {
-                      // Calcular TNM
-                      const tea = parseFloat(item.tasaAnual.replace(",", "."));
-                      const tnm = (
-                        (Math.pow(1 + tea / 100, 1 / 12) - 1) *
-                        100
-                      ).toFixed(5);
+            )}
 
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-1">
+              Tasas de Interés de Referencia
+            </h2>
+            <p className="text-sm text-white/50 mb-7">
+              Indicadores del período actual según certificación oficial
+            </p>
+
+            <div className="flex flex-wrap gap-4">
+              {cargando ? (
+                [...Array(4)].map((_, i) => (
+                  <div key={i} className="flex-1 min-w-[180px] rounded-2xl border border-white/10 bg-white/5 p-5 h-28 shimmer" />
+                ))
+              ) : statsActual ? (
+                <>
+                  <StatCard label="Tasa Efectiva Anual"   value={`${statsActual.tasaAnual}%`}    sub="TEA — Tasa máxima permitida"     icon={TrendingUp} delay="0s"    />
+                  <StatCard label="Tasa Nominal Mensual"  value={`${statsActual.tnm}%`}           sub="TNM equivalente"                 icon={BarChart3}  delay="0.08s" />
+                  <StatCard label="Tasa Ajustada Anual"   value={`${statsActual.tasaAjustada}%`}  sub="Usura efectiva ajustada"         icon={TrendingUp} accent delay="0.16s" />
+                  <StatCard label="Tasa Diaria"           value={`${statsActual.tasaDiaria}%`}    sub="Interés diario de referencia"    icon={Calendar}   delay="0.24s" />
+                </>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        {/* Filters + Table */}
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+
+          {/* Filter bar */}
+          <div className="animate-fade-in mb-6 rounded-2xl border border-white/12 bg-white/6 backdrop-blur-md p-4 sm:p-5">
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-4">
+              Filtrar por rango de fechas
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
+
+              <div className="flex-1 min-w-0">
+                <label htmlFor="fecha-desde" className="block text-xs font-medium text-white/70 mb-1.5">
+                  Desde
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40 pointer-events-none" />
+                  <input
+                    id="fecha-desde"
+                    type="date"
+                    title="Fecha desde"
+                    value={fechaDesde}
+                    onChange={(e) => setFechaDesde(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 text-sm bg-white/6 border border-white/15 hover:border-white/25 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary-400/60 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <label htmlFor="fecha-hasta" className="block text-xs font-medium text-white/70 mb-1.5">
+                  Hasta
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40 pointer-events-none" />
+                  <input
+                    id="fecha-hasta"
+                    type="date"
+                    title="Fecha hasta"
+                    value={fechaHasta}
+                    onChange={(e) => setFechaHasta(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 text-sm bg-white/6 border border-white/15 hover:border-white/25 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary-400/60 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={aplicarFiltros}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary-500 hover:bg-primary-400 active:bg-primary-600 text-white text-sm font-semibold rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-primary-500/25 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-1 focus:ring-offset-transparent"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  Buscar
+                </button>
+                {hayFiltros && (
+                  <button
+                    type="button"
+                    onClick={limpiarFiltros}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white/8 hover:bg-white/14 border border-white/12 hover:border-white/20 text-white/70 hover:text-white text-sm font-medium rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-white/30"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Limpiar</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Results meta */}
+          <div className="flex items-center justify-between mb-3 px-1">
+            <p className="text-xs text-white/40">
+              {!cargando && (
+                <>
+                  <span className="font-semibold text-white/70">{datosFiltrados.length}</span>
+                  {" "}período{datosFiltrados.length !== 1 ? "s" : ""} encontrado{datosFiltrados.length !== 1 ? "s" : ""}
+                  {hayFiltros && <span className="ml-1 text-primary-400">· filtro activo</span>}
+                </>
+              )}
+            </p>
+            {error && (
+              <p className="text-xs text-amber-400/80 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400/60" />
+                Mostrando datos de ejemplo
+              </p>
+            )}
+          </div>
+
+          {/* Table */}
+          <div className="animate-fade-in rounded-2xl border border-white/12 bg-white/5 backdrop-blur-md overflow-hidden shadow-2xl shadow-black/30">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/12 bg-white/8">
+                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/50">Período inicial</th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/50">Período final</th>
+                    <th className="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white/50">TEA (%)</th>
+                    <th className="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-primary-400/80">TNM (%)</th>
+                    <th className="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-primary-400/80">Ajustada (%)</th>
+                    <th className="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-white/50">Diaria (%)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cargando ? (
+                    [...Array(8)].map((_, i) => <SkeletonRow key={i} />)
+                  ) : datosFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-20 text-center">
+                        <div className="flex flex-col items-center gap-3 text-white/30">
+                          <Search className="w-8 h-8" />
+                          <p className="text-sm font-medium">Sin resultados para el rango seleccionado</p>
+                          <button
+                            type="button"
+                            onClick={limpiarFiltros}
+                            className="text-xs text-primary-400 hover:text-primary-300 underline underline-offset-2 transition-colors"
+                          >
+                            Limpiar filtros
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    datosFiltrados.map((item, index) => {
+                      const tea = parseFloat(item.tasaAnual.replace(",", "."));
+                      const tnm = ((Math.pow(1 + tea / 100, 1 / 12) - 1) * 100).toFixed(5);
+                      const isFirst = index === 0;
                       return (
                         <tr
                           key={index}
-                          className="hover:bg-white/5 transition-colors duration-200"
-                          style={{
-                            animation: `fadeInUp 0.6s ease-out ${
-                              index * 0.05
-                            }s both`,
-                          }}
+                          className={`border-b border-white/6 last:border-0 transition-colors duration-150 ${
+                            isFirst
+                              ? "bg-primary-500/8 hover:bg-primary-500/14"
+                              : index % 2 === 0
+                                ? "hover:bg-white/5"
+                                : "bg-white/3 hover:bg-white/7"
+                          }`}
                         >
-                          <td className="px-3 py-2.5 text-sm text-white">
+                          <td className="px-4 py-3 font-mono text-xs text-white/80 whitespace-nowrap">
+                            {isFirst && (
+                              <span className="mr-2 inline-block px-1.5 py-0.5 text-[10px] font-semibold rounded bg-primary-500/25 text-primary-300 border border-primary-400/20">
+                                Vigente
+                              </span>
+                            )}
                             {item.fechaInicial}
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-white">
+                          <td className="px-4 py-3 font-mono text-xs text-white/80 whitespace-nowrap">
                             {item.fechaFinal}
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-white text-right font-medium">
+                          <td className="px-4 py-3 text-right font-semibold text-white/90 tabular-nums">
                             {item.tasaAnual}
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-blue-400 text-right font-bold">
-                            {tnm}
+                          <td className="px-4 py-3 text-right">
+                            <span className="inline-block px-2 py-0.5 rounded-lg bg-primary-500/15 text-primary-300 font-bold tabular-nums text-xs">
+                              {tnm}
+                            </span>
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-orange-400 text-right font-bold">
-                            {item.tasaAnualAjustada}
+                          <td className="px-4 py-3 text-right">
+                            <span className="inline-block px-2 py-0.5 rounded-lg bg-primary-500/15 text-primary-300 font-bold tabular-nums text-xs">
+                              {item.tasaAnualAjustada}
+                            </span>
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-white text-right">
+                          <td className="px-4 py-3 text-right text-white/60 tabular-nums text-xs">
                             {item.tasaDiaria}
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <style jsx>{`
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
+          {/* Legend */}
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 px-1">
+            {[
+              { color: "bg-white/50",    label: "TEA — Tasa Efectiva Anual"    },
+              { color: "bg-primary-400", label: "TNM — Tasa Nominal Mensual"   },
+              { color: "bg-primary-300", label: "Ajustada — Usura certificada" },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${item.color} opacity-80`} />
+                <span className="text-[11px] text-white/35">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </main>
+
+      {/* ── FOOTER ── */}
+      <footer className="border-t border-white/8 bg-primary-900/60 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary-500/20 border border-primary-400/20 flex items-center justify-center">
+              <Building2 className="w-3.5 h-3.5 text-primary-400" />
+            </div>
+            <span className="text-xs text-white/40">
+              Desarrollado por{" "}
+              <span className="text-white/70 font-semibold">Alejandro García Garay</span>
+            </span>
+          </div>
+          <p className="text-[11px] text-white/25 text-center sm:text-right">
+            Fuente: Superintendencia Financiera de Colombia · Datos históricos certificados
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

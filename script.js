@@ -15,20 +15,63 @@ let rawData = [];
 function parseCsv(text) {
   const rows = text.trim().split(/\r?\n/);
   // First line may contain headers – ignore if it contains non‑numeric data in column 3
-  const hasHeader = !/^[0-9]/.test(rows[0].split(",")[2]);
+  const hasHeader = Number.isNaN(parseFloat((rows[0] || "").split(",")[2]?.replace(/["']/g, '')));
   const startIdx = hasHeader ? 1 : 0;
   const data = [];
+  
   for (let i = startIdx; i < rows.length; i++) {
-    const cols = rows[i].split(",");
-    if (cols.length < 6) continue; // skip malformed lines
-    const [inicio, fin, teaStr, tnmStr, ajustadaStr, diariaStr] = cols;
+    const rowStr = rows[i];
+    if (!rowStr.trim()) continue;
+    
+    // Split by comma, ignoring commas inside double quotes
+    const cols = [];
+    let current = '';
+    let inQuotes = false;
+    for (let j = 0; j < rowStr.length; j++) {
+      const char = rowStr[j];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        cols.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    cols.push(current.trim());
+    
+    if (cols.length < 5) continue; // skip malformed lines
+
+    const inicio = cols[0];
+    const fin = cols[1];
+    const teaStr = cols[2];
+    
+    let tnmStr, ajustadaStr, diariaStr;
+    if (cols.length === 5) {
+       ajustadaStr = cols[3];
+       diariaStr = cols[4];
+    } else {
+       tnmStr = cols[3];
+       ajustadaStr = cols[4];
+       diariaStr = cols[5];
+    }
+
+    const tea = parseFloat(teaStr.replace(/[,]/g, "."));
+    const ajustada = parseFloat(ajustadaStr.replace(/[,]/g, "."));
+    const diaria = parseFloat(diariaStr.replace(/[,]/g, "."));
+    
+    // Calculate TNM if it wasn't in the CSV, otherwise parse it
+    const tnm = cols.length === 5 
+      ? (Math.pow(1 + tea / 100, 1/12) - 1) * 100 
+      : parseFloat(tnmStr.replace(/[,]/g, "."));
+
     data.push({
-      inicio: inicio.trim(),
-      fin: fin.trim(),
-      tea: parseFloat(teaStr.replace(/[,]/g, ".")),
-      tnm: parseFloat(tnmStr.replace(/[,]/g, ".")),
-      ajustada: parseFloat(ajustadaStr.replace(/[,]/g, ".")),
-      diaria: parseFloat(diariaStr.replace(/[,]/g, ".")),
+      inicio: inicio,
+      fin: fin,
+      tea: tea,
+      tnm: tnm,
+      ajustada: ajustada,
+      diaria: diaria,
     });
   }
   return data;

@@ -18,11 +18,11 @@ function parseCsv(text) {
   const hasHeader = Number.isNaN(parseFloat((rows[0] || "").split(",")[2]?.replace(/["']/g, '')));
   const startIdx = hasHeader ? 1 : 0;
   const data = [];
-  
+
   for (let i = startIdx; i < rows.length; i++) {
     const rowStr = rows[i];
     if (!rowStr.trim()) continue;
-    
+
     // Split by comma, ignoring commas inside double quotes
     const cols = [];
     let current = '';
@@ -39,30 +39,30 @@ function parseCsv(text) {
       }
     }
     cols.push(current.trim());
-    
+
     if (cols.length < 5) continue; // skip malformed lines
 
     const inicio = cols[0];
     const fin = cols[1];
     const teaStr = cols[2];
-    
+
     let tnmStr, ajustadaStr, diariaStr;
     if (cols.length === 5) {
-       ajustadaStr = cols[3];
-       diariaStr = cols[4];
+      ajustadaStr = cols[3];
+      diariaStr = cols[4];
     } else {
-       tnmStr = cols[3];
-       ajustadaStr = cols[4];
-       diariaStr = cols[5];
+      tnmStr = cols[3];
+      ajustadaStr = cols[4];
+      diariaStr = cols[5];
     }
 
     const tea = parseFloat(teaStr.replace(/[,]/g, "."));
     const ajustada = parseFloat(ajustadaStr.replace(/[,]/g, "."));
     const diaria = parseFloat(diariaStr.replace(/[,]/g, "."));
-    
+
     // Calculate TNM if it wasn't in the CSV, otherwise parse it
-    const tnm = cols.length === 5 
-      ? (Math.pow(1 + tea / 100, 1/12) - 1) * 100 
+    const tnm = cols.length === 5
+      ? (Math.pow(1 + tea / 100, 1 / 12) - 1) * 100
       : parseFloat(tnmStr.replace(/[,]/g, "."));
 
     data.push({
@@ -116,9 +116,9 @@ function updateDashboard(data) {
 
   // Update main rate for animation
   targetRate = current.tea;
-  
+
   // Re-run animation if it's already initialized, or it will be picked up by ScrollTrigger
-  if (currentRate > 0) animateCounter(); 
+  if (currentRate > 0) animateCounter();
 
   // Update daily rate
   const dailyRateEl = document.getElementById('dailyRate');
